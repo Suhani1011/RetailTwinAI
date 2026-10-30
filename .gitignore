@@ -1,0 +1,17 @@
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+.env
+
+# Node.js
+node_modules/
+dist/
+
+# Local database
+backend/retailtwin.db
+
+# Editor and operating system
+.vscode/
+.DS_Store

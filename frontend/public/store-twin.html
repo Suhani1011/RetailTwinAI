@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RetailTwin AI – Store Digital Twin</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#E8EDF0;--panel:#F7F9FA;--ink:#17262E;--mute:#5B6D77;--line:#CBD5DA;--floor:#DDE5E8;--teal:#0E7C86;--amber:#D98E1F;--red:#C93C3C;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10181D;--panel:#18232A;--ink:#E4ECEF;--mute:#8DA0AA;--line:#2B3B44;--floor:#1F2D34;--teal:#37B5BF;--amber:#F0B24A;--red:#EF6B6B}}
+:root[data-theme="dark"]{--bg:#10181D;--panel:#18232A;--ink:#E4ECEF;--mute:#8DA0AA;--line:#2B3B44;--floor:#1F2D34;--teal:#37B5BF;--amber:#F0B24A;--red:#EF6B6B}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:26px;margin:0 0 2px;font-weight:600;letter-spacing:-.01em}
+h2{font-size:15px;margin:0 0 8px;font-weight:600}
+.sub{color:var(--mute);margin:0 0 16px;max-width:70ch}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+.kpi b{display:block;font-size:22px;font-weight:600}.kpi span{color:var(--mute);font-size:13px}
+.grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:14px}
+@media(max-width:820px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+canvas{width:100%;height:auto;display:block;border-radius:4px;background:var(--floor)}
+.ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:12px;font-size:13px}
+label{display:flex;flex-direction:column;gap:4px;color:var(--mute)}
+select,input[type=range],button{font:inherit}
+select,button{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer}
+button.p{background:var(--teal);color:#fff;border-color:var(--teal)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.row{display:grid;grid-template-columns:90px 1fr 70px;gap:8px;align-items:center;font-size:13px;margin:7px 0}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%}
+.row em{font-style:normal;text-align:right;color:var(--mute)}
+ul{margin:0;padding-left:18px;font-size:14px}li{margin:6px 0}
+.warn{color:var(--red)}.note{color:var(--mute);font-size:12px;margin-top:8px}
+</style></head><body><main>
+<h1>RetailTwin AI</h1>
+<p class="sub">A live digital twin of a supermarket floor. Simulated shoppers move through the store, stock updates in real time, and a forecasting model flags shelves that will run out and where to act.</p>
+<div class="kpis">
+<div class="kpi"><b id="kIn">0</b><span>Shoppers in store</span></div>
+<div class="kpi"><b id="kVis">0</b><span>Total visits</span></div>
+<div class="kpi"><b id="kItems">0</b><span>Items sold</span></div>
+<div class="kpi"><b id="kRev">₹0</b><span>Revenue</span></div>
+<div class="kpi"><b id="kClock">09:00</b><span>Store time</span></div>
+</div>
+<div class="grid"><div>
+<div class="panel"><h2>Store floor (live twin)</h2>
+<canvas id="cv" width="640" height="420" aria-label="Top-down store map with moving shoppers"></canvas>
+<div class="ctl">
+<label>Shoppers per minute<input id="rate" type="range" min="0.2" max="4" step="0.2" value="1.4"></label>
+<label>Simulation speed<select id="spd"><option value="1">1×</option><option value="3" selected>3×</option><option value="8">8×</option></select></label>
+<label>Promotion (+70% demand)<select id="promo"></select></label>
+<label>Heatmap<select id="heat"><option value="1">Show foot traffic</option><option value="0">Hide</option></select></label>
+</div>
+<div class="ctl"><button id="pause">Pause</button><button id="restock" class="p">Restock all shelves</button><button id="reset">Reset simulation</button></div>
+</div></div>
+<div>
+<div class="panel"><h2>Stock forecast</h2><div id="fc"></div>
+<p class="note">Forecast = current stock ÷ smoothed sales rate over the last 15 store minutes.</p></div>
+<div class="panel"><h2>AI insights</h2><ul id="ins"></ul></div>
+</div></div>
+<script>
+const W=640,H=420,cv=document.getElementById('cv'),g=cv.getContext('2d');
+const CATS=[
+{n:'Produce',x:60,y:70,c:'#4E9F5B',p:30,pop:1.3},{n:'Bakery',x:340,y:70,c:'#C88A4A',p:40,pop:.8},
+{n:'Dairy',x:60,y:170,c:'#5B8FD0',p:50,pop:1.1},{n:'Beverages',x:340,y:170,c:'#8A63C4',p:25,pop:1.2},
+{n:'Snacks',x:60,y:270,c:'#D96A4A',p:35,pop:1},{n:'Household',x:340,y:270,c:'#5E7C86',p:80,pop:.6}];
+const SW=200,SH=30,CAP=60,CY=[135,235,335];
+CATS.forEach((c,i)=>{c.i=i;c.stock=CAP;c.visits=0;c.sold=[];c.ax=c.x+SW/2;c.ay=CY[Math.floor(i/2)]});
+const pr=document.getElementById('promo');
+pr.innerHTML='<option value="-1">None</option>'+CATS.map(c=>`<option value="${c.i}">${c.n}</option>`).join('');
+let S,paused=false,last=performance.now();
+const CELL=20,GW=W/CELL,GH=H/CELL;
+function init(){S={t:0,shop:[],vis:0,items:0,rev:0,heat:new Float32Array(GW*GH),acc:0,dwell:[],alerts:0};CATS.forEach(c=>{c.stock=CAP;c.visits=0;c.sold=[]})}
+function route(from,to){return [{x:300,y:from.y},{x:300,y:to.y},{x:to.x,y:to.y}]}
+function spawn(){
+const pro=+pr.value,w=CATS.map(c=>c.pop*(c.i===pro?1.7:1)*(c.stock>0?1:.1));
+const n=2+Math.floor(Math.random()*3),T=[];
+for(let k=0;k<n;k++){let r=Math.random()*w.reduce((a,b)=>a+b),i=0;while(r>w[i]){r-=w[i];i++;if(i>=w.length-1)break}if(!T.includes(i))T.push(i)}
+const s={x:300,y:410,path:[{x:300,y:375}],T,cur:{x:300,y:375},state:'walk',dw:0,t0:S.t,bag:0,col:`hsl(${Math.random()*360|0},55%,50%)`};
+S.shop.push(s);S.vis++}
+function next(s){
+if(s.T.length){const c=CATS[s.T.shift()];s.tgt=c;s.path=route(s.cur,{x:c.ax+(Math.random()-.5)*120,y:c.ay});s.state='walk'}
+else if(s.state!=='pay'&&s.state!=='exit'){s.path=[{x:300,y:s.cur.y},{x:300,y:375},{x:540,y:375}];s.state='pay';s.tgt=null}
+else if(s.state==='pay'){s.path=[{x:300,y:375},{x:300,y:415}];s.state='exit'}
+else s.dead=true}
+function step(dt){
+const spd=+document.getElementById('spd').value,sm=dt*spd/ 1; // dt real sec, sm = scaled
+S.t+=sm/ 1 *1; // 1 real sec = 1 store minute at 1x
+S.acc+=sm*(+document.getElementById('rate').value);
+while(S.acc>=1){S.acc-=1;if(Math.random()<.9)spawn()}
+S.shop.forEach(s=>{
+if(s.dw>0){s.dw-=sm;if(s.dw<=0){if(s.tgt){const c=s.tgt;if(c.stock>0){const q=1+(Math.random()<.4);const take=Math.min(q,c.stock);c.stock-=take;s.bag+=take;S.items+=take;S.rev+=take*c.p;for(let k=0;k<take;k++)c.sold.push(S.t)}c.visits++}next(s)}return}
+const p=s.path[0];if(!p){if(s.state==='walk'&&s.tgt)s.dw=.6+Math.random()*1.2;else if(s.state==='pay')s.dw=.8;else next(s);return}
+const dx=p.x-s.x,dy=p.y-s.y,d=Math.hypot(dx,dy),v=70*sm;
+if(d<=v){s.x=p.x;s.y=p.y;s.cur={x:p.x,y:p.y};s.path.shift()}else{s.x+=dx/d*v;s.y+=dy/d*v}
+const gx=Math.min(GW-1,Math.max(0,s.x/CELL|0)),gy=Math.min(GH-1,Math.max(0,s.y/CELL|0));S.heat[gy*GW+gx]+=sm;
+if(s.state==='exit'&&!s.path.length){S.dwell.push(S.t-s.t0)}});
+S.shop=S.shop.filter(s=>!(s.state==='exit'&&!s.path.length&&s.dw<=0)&&!s.dead)}
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function draw(){
+g.clearRect(0,0,W,H);g.fillStyle=css('--floor');g.fillRect(0,0,W,H);
+if(document.getElementById('heat').value==='1'){let m=1;for(const v of S.heat)if(v>m)m=v;
+for(let y=0;y<GH;y++)for(let x=0;x<GW;x++){const v=S.heat[y*GW+x]/m;if(v>.02){g.fillStyle=`rgba(217,142,31,${Math.min(.75,v*.9)})`;g.fillRect(x*CELL,y*CELL,CELL,CELL)}}}
+CATS.forEach(c=>{const f=c.stock/CAP;g.fillStyle=css('--panel');g.fillRect(c.x,c.y,SW,SH);g.fillStyle=f<.2?css('--red'):c.c;g.fillRect(c.x,c.y,SW*f,SH);
+g.strokeStyle=css('--line');g.strokeRect(c.x,c.y,SW,SH);g.fillStyle=css('--ink');g.font='600 12px IBM Plex Sans,sans-serif';g.fillText(c.n+(+pr.value===c.i?'  · promo':''),c.x+6,c.y-6);
+g.font='11px IBM Plex Sans,sans-serif';g.fillStyle=f>.5?'#fff':css('--ink');g.fillText(c.stock+' / '+CAP,c.x+SW-52,c.y+19)});
+g.fillStyle=css('--ink');g.font='11px IBM Plex Sans,sans-serif';g.fillText('Entrance',262,414);g.fillText('Checkout',500,398);
+g.strokeStyle=css('--teal');g.lineWidth=2;g.strokeRect(520,360,50,30);g.lineWidth=1;
+S.shop.forEach(s=>{g.fillStyle=s.col;g.beginPath();g.arc(s.x,s.y,5,0,7);g.fill()})}
+function rate(c){const w=15,r=c.sold.filter(t=>t>S.t-w).length/w;return r}
+function ui(){
+const $=id=>document.getElementById(id);
+$('kIn').textContent=S.shop.length;$('kVis').textContent=S.vis;$('kItems').textContent=S.items;$('kRev').textContent='₹'+Math.round(S.rev).toLocaleString('en-IN');
+const m=9*60+Math.floor(S.t);$('kClock').textContent=String(Math.floor(m/60)%24).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+let h='';const risks=[];
+CATS.forEach(c=>{const r=rate(c),eta=r>0?c.stock/r:Infinity,low=eta<20||c.stock<10;if(low)risks.push([c,eta]);
+const f=c.stock/CAP;h+=`<div class="row"><span>${c.n}</span><div class="bar"><i style="width:${f*100}%;background:${low?'var(--red)':'var(--teal)'}"></i></div><em class="${low?'warn':''}">${c.stock<=0?'Empty':eta===Infinity?'–':Math.round(eta)+' min'}</em></div>`});
+$('fc').innerHTML=h;
+const ins=[];
+risks.sort((a,b)=>a[1]-b[1]).forEach(([c,e])=>ins.push(`<span class="warn">Restock ${c.n}:</span> ${c.stock<=0?'shelf is empty and sales are being lost.':'expected to run out in about '+Math.round(e)+' min.'}`));
+const top=[...CATS].sort((a,b)=>b.visits-a.visits)[0];if(top.visits>3)ins.push(`${top.n} is the busiest zone with ${top.visits} pick-ups. Keep it fully stocked at peak hours.`);
+const low=[...CATS].sort((a,b)=>a.visits-b.visits)[0];if(S.vis>15&&low!==top)ins.push(`${low.n} gets the least attention (${low.visits} pick-ups). Try moving it nearer the entrance or running a promotion.`);
+if(+pr.value>=0){const c=CATS[+pr.value];ins.push(`Promotion on ${c.n} is pulling shoppers there. Compare its sales rate (${rate(c).toFixed(1)}/min) with other categories.`)}
+if(S.dwell.length>3){const a=S.dwell.slice(-20).reduce((x,y)=>x+y,0)/Math.min(20,S.dwell.length);ins.push(`Average visit length is ${a.toFixed(1)} min. Shorter checkout paths could reduce it.`)}
+if(!ins.length)ins.push('Collecting data. Insights appear as shoppers move through the store.');
+$('ins').innerHTML=ins.slice(0,6).map(x=>'<li>'+x+'</li>').join('')}
+let uiT=0;
+function loop(now){const dt=Math.min(.1,(now-last)/1000);last=now;if(!paused){step(dt);uiT+=dt;if(uiT>.4){ui();uiT=0}}draw();requestAnimationFrame(loop)}
+document.getElementById('pause').onclick=e=>{paused=!paused;e.target.textContent=paused?'Resume':'Pause'};
+document.getElementById('restock').onclick=()=>{CATS.forEach(c=>c.stock=CAP);ui()};
+document.getElementById('reset').onclick=()=>{init();ui()};
+init();ui();requestAnimationFrame(loop);
+</script></main></body></html>
