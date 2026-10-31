@@ -50,5 +50,5 @@ Open http://localhost:5173
 
 ## API
 `GET /api/summary` `GET /api/inventory` `GET /api/forecast/{product_id}` `GET /api/model/metrics` `GET /api/recommendations` `POST /api/simulate`
-file:///C:/Users/bhong/OneDrive/Desktop/RetailTwiinAI/RetailTwin-AI.html
 
+link : file:///C:/Users/bhong/OneDrive/Desktop/RetailTwiinAI/RetailTwin-AI.html
